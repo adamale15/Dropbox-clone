@@ -7,15 +7,28 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx ./lib/db/migrate.ts"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.34.1",
+    "@heroui/alert": "^2.2.27",
+    "@heroui/card": "^2.2.25",
+    "@heroui/divider": "^2.2.20",
+    "@heroui/input": "^2.4.28",
+    "@hookform/resolvers": "^5.2.2",
     "@neondatabase/serverless": "^1.0.2",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.44.7",
+    "lucide-react": "^0.548.0",
     "next": "16.0.1",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "react-hook-form": "^7.65.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
