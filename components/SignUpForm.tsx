@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useSignUp } from "@clerk/nextjs";
@@ -34,6 +34,14 @@ export default function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Check if sign-up attempt is still valid when in verification mode
+  useEffect(() => {
+    if (verifying && (!isLoaded || !signUp || !signUp.id)) {
+      setVerifying(false);
+      setAuthError("Sign-up session expired. Please try again.");
+    }
+  }, [verifying, isLoaded, signUp]);
+
   const {
     register,
     handleSubmit,
@@ -54,19 +62,33 @@ export default function SignUpForm() {
     setAuthError(null);
 
     try {
-      await signUp.create({
+      const result = await signUp.create({
         emailAddress: data.email,
         password: data.password,
       });
 
+      // Verify that sign-up was created successfully
+      if (!result || !result.id) {
+        throw new Error("Failed to create sign-up attempt");
+      }
+
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-      setVerifying(true);
+      
+      // Double-check signUp still exists before switching to verification view
+      if (signUp && signUp.id) {
+        setVerifying(true);
+        setAuthError(null);
+      } else {
+        throw new Error("Sign-up attempt was lost");
+      }
     } catch (error: any) {
       console.error("Sign-up error:", error);
       setAuthError(
         error.errors?.[0]?.message ||
+          error.message ||
           "An error occurred during sign-up. Please try again."
       );
+      setVerifying(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -76,7 +98,22 @@ export default function SignUpForm() {
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
-    if (!isLoaded || !signUp) return;
+    if (!isLoaded || !signUp) {
+      setVerificationError(
+        "Sign-up session expired. Please start over."
+      );
+      setVerifying(false);
+      return;
+    }
+
+    // Check if sign-up attempt exists
+    if (!signUp.id) {
+      setVerificationError(
+        "Sign-up attempt not found. Please start over."
+      );
+      setVerifying(false);
+      return;
+    }
 
     setIsSubmitting(true);
     setVerificationError(null);
@@ -97,16 +134,56 @@ export default function SignUpForm() {
       }
     } catch (error: any) {
       console.error("Verification error:", error);
-      setVerificationError(
-        error.errors?.[0]?.message ||
-          "An error occurred during verification. Please try again."
-      );
+      const errorMessage = error.errors?.[0]?.message || 
+        error.message || 
+        "An error occurred during verification. Please try again.";
+      
+      // If the error indicates no sign-up attempt, reset to sign-up form
+      if (errorMessage.includes("No sign up attempt") || 
+          errorMessage.includes("sign up attempt was not found")) {
+        setVerificationError("Session expired. Please start over.");
+        setVerifying(false);
+      } else {
+        setVerificationError(errorMessage);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Check if we should show verification form - ensure signUp exists and has an id
   if (verifying) {
+    // If signUp is not available or doesn't have an id, show error message
+    if (!isLoaded || !signUp || !signUp.id) {
+      return (
+        <Card className="w-full max-w-md border border-default-200 bg-default-50 shadow-xl">
+          <CardHeader className="flex flex-col gap-1 items-center pb-2">
+            <h1 className="text-2xl font-bold text-default-900">
+              Session Expired
+            </h1>
+          </CardHeader>
+          <Divider />
+          <CardBody className="py-6">
+            <div className="bg-danger-50 text-danger-700 p-4 rounded-lg mb-6 flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <p>Sign-up session expired. Please start over.</p>
+            </div>
+            <Button
+              color="primary"
+              className="w-full"
+              onClick={() => {
+                setVerifying(false);
+                setAuthError(null);
+                setVerificationCode("");
+              }}
+            >
+              Back to Sign Up
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
+
     return (
       <Card className="w-full max-w-md border border-default-200 bg-default-50 shadow-xl">
         <CardHeader className="flex flex-col gap-1 items-center pb-2">
@@ -128,7 +205,11 @@ export default function SignUpForm() {
             </div>
           )}
 
-          <form onSubmit={handleVerificationSubmit} className="space-y-6">
+          <form
+            onSubmit={handleVerificationSubmit}
+            className="space-y-6"
+            suppressHydrationWarning
+          >
             <div className="space-y-2">
               <label
                 htmlFor="verificationCode"
@@ -161,11 +242,24 @@ export default function SignUpForm() {
             <p className="text-sm text-default-500">
               Didn't receive a code?{" "}
               <button
+                type="button"
                 onClick={async () => {
-                  if (signUp) {
+                  if (!signUp || !signUp.id) {
+                    setVerificationError("Sign-up session expired. Please start over.");
+                    setVerifying(false);
+                    return;
+                  }
+                  try {
                     await signUp.prepareEmailAddressVerification({
                       strategy: "email_code",
                     });
+                    setVerificationError(null);
+                  } catch (error: any) {
+                    console.error("Resend error:", error);
+                    setVerificationError(
+                      error.errors?.[0]?.message ||
+                        "Failed to resend code. Please try again."
+                    );
                   }
                 }}
                 className="text-primary hover:underline font-medium"
@@ -173,6 +267,19 @@ export default function SignUpForm() {
                 Resend code
               </button>
             </p>
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setVerifying(false);
+                  setVerificationCode("");
+                  setVerificationError(null);
+                }}
+                className="text-sm text-default-500 hover:text-default-700 underline"
+              >
+                Back to sign up
+              </button>
+            </div>
           </div>
         </CardBody>
       </Card>
@@ -200,7 +307,11 @@ export default function SignUpForm() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-6"
+          suppressHydrationWarning
+        >
           <div className="space-y-2">
             <label
               htmlFor="email"
@@ -297,6 +408,9 @@ export default function SignUpForm() {
               </p>
             </div>
           </div>
+
+          {/* Clerk CAPTCHA widget */}
+          <div id="clerk-captcha" />
 
           <Button
             type="submit"

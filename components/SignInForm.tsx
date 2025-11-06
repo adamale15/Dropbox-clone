@@ -82,7 +82,11 @@ export default function SignInForm() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-6"
+          suppressHydrationWarning
+        >
           <div className="space-y-2">
             <label
               htmlFor="identifier"
